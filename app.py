@@ -79,8 +79,19 @@ file = st.file_uploader("📂 Upload Excel file", type=["xlsx"])
 if file:
     df = pd.read_excel(file, dtype={'bmsActiveErrorBits': str})
     df.columns = df.columns.str.strip()
+
+    # 🔧 FIX (ONLY ADDITION — nothing else changed)
+    if 'bmsActiveErrorBits' not in df.columns:
+        if 'bmsErrorArray' in df.columns:
+            df.rename(columns={'bmsErrorArray': 'bmsActiveErrorBits'}, inplace=True)
+        else:
+            st.error("❌ Column 'bmsActiveErrorBits' not found")
+            st.write("Available columns:", list(df.columns))
+            st.stop()
+
     # =========================
     # 🧹 CLEAN BMS ERROR COLUMN
+    # =========================
     df['bmsActiveErrorBits'] = df['bmsActiveErrorBits'].replace(
         [None, "", " ", "nan", "NaN"], pd.NA
     )    
@@ -153,29 +164,31 @@ if file:
         c3.metric("🪫 Min Voltage", f"{df['batteryMinVoltage'].min():.2f}")
         c4.metric("⚡ SOC @ Max Imbalance", f"{df.loc[max_idx,'batteryStateOfCharge']:.2f}")
 
+        if df['cellImbalance'].max() > 200:
+            st.error("🚨 Critical imbalance detected")
+
         st.write(f"📍 Time: {df.loc[max_idx,'createdAt']}")
         st.write(f"🚗 Odometer: {df.loc[max_idx,'odometer']}")
-        # ===== SMART ERROR DETECTION =====
-        window = 5  # you can change to 3–10
 
+        # ===== SMART ERROR DETECTION =====
+        window = 5
         start = max(0, max_idx - window)
         end = min(len(df), max_idx + window + 1)
 
         subset = df.iloc[start:end]
 
-        # filter real errors (ignore 0 / empty)
         errors_nearby = subset[
-            subset[error_col].astype(str).str.contains(r'\d') &
-            (subset[error_col].astype(str) != '0')
+            subset['bmsActiveErrorBits'].astype(str).str.contains(r'\d') &
+            (subset['bmsActiveErrorBits'].astype(str) != '0')
         ]
 
         if not errors_nearby.empty:
-            combined = ",".join(errors_nearby[error_col].astype(str).unique())
+            combined = ",".join(errors_nearby['bmsActiveErrorBits'].astype(str).unique())
             st.write(f"⚠️ BMS Error (near peak): {decode_error(combined)}")
         else:
             st.write("⚠️ BMS Error: No Error near peak imbalance")
-            
-            st.write(f"🔧 BMS Config ID: {df.loc[max_idx,'batteryBmsConfigId']}")
+
+        st.write(f"🔧 BMS Config ID: {df.loc[max_idx,'batteryBmsConfigId']}")
 
         st.divider()
 
@@ -186,7 +199,6 @@ if file:
 
         ax1.plot(df['createdAt'], df['batteryMaxVoltage'], color='purple', linewidth=2)
         ax1.plot(df['createdAt'], df['batteryMinVoltage'], color='orange', linewidth=2)
-
 
         ax1.set_ylim(min_v - 100, max_v + 100)
 
