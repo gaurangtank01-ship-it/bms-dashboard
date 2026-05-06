@@ -155,8 +155,27 @@ if file:
 
         st.write(f"📍 Time: {df.loc[max_idx,'createdAt']}")
         st.write(f"🚗 Odometer: {df.loc[max_idx,'odometer']}")
-        st.write(f"⚠️ BMS Error: {decode_error(df.loc[max_idx,'bmsActiveErrorBits'])}")
-        st.write(f"🔧 BMS Config ID: {df.loc[max_idx,'batteryBmsConfigId']}")
+        # ===== SMART ERROR DETECTION =====
+        window = 5  # you can change to 3–10
+
+        start = max(0, max_idx - window)
+        end = min(len(df), max_idx + window + 1)
+
+        subset = df.iloc[start:end]
+
+        # filter real errors (ignore 0 / empty)
+        errors_nearby = subset[
+            subset[error_col].astype(str).str.contains(r'\d') &
+            (subset[error_col].astype(str) != '0')
+        ]
+
+        if not errors_nearby.empty:
+            combined = ",".join(errors_nearby[error_col].astype(str).unique())
+            st.write(f"⚠️ BMS Error (near peak): {decode_error(combined)}")
+        else:
+            st.write("⚠️ BMS Error: No Error near peak imbalance")
+            
+            st.write(f"🔧 BMS Config ID: {df.loc[max_idx,'batteryBmsConfigId']}")
 
         st.divider()
 
